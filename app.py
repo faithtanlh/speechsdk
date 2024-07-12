@@ -67,4 +67,4 @@ def handle_stop_transcription():
         # Additional logic to stop transcription if needed
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000)
+    socketio.run(app, host='0.0.0.0', port=8000)
