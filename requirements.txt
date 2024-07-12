@@ -1,0 +1,5 @@
+Flask
+Flask-SocketIO
+Flask-CORS
+python-dotenv
+azure-cognitiveservices-speech
