@@ -1,20 +1,14 @@
-import os
-from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
-from dotenv import load_dotenv
+from flask import Flask, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import azure.cognitiveservices.speech as speechsdk
-
-load_dotenv()
+import flask_cors as CORS
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
 socketio = SocketIO(app, cors_allowed_origins="*")
+CORS.CORS(app)
 
-CORS(app)
-
-AZURE_SPEECH_KEY = ''
-AZURE_SERVICE_REGION = ''
+AZURE_SPEECH_KEY = 'e5404bd89ea14c388c2c17234f95e36a'
+AZURE_SERVICE_REGION = 'southeastasia'
 
 # Initialize configurations
 speech_config = speechsdk.SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SERVICE_REGION)
@@ -29,7 +23,11 @@ channels = 1
 bits_per_sample = 16
 samples_per_second = 16000
 
-def initialize_recognizer():
+# Store recognizers and streams for each room
+recognizers = {}
+audio_streams = {}
+
+def initialize_recognizer(room):
     wave_format = speechsdk.audio.AudioStreamFormat(samples_per_second, bits_per_sample, channels)
     audio_input_stream = speechsdk.audio.PushAudioInputStream(stream_format=wave_format)
     audio_config = speechsdk.audio.AudioConfig(stream=audio_input_stream)
@@ -39,12 +37,14 @@ def initialize_recognizer():
         audio_config=audio_config
     )
     
-    speech_recognizer.recognizing.connect(speech_recognizer_recognizing_cb)
-    #speech_recognizer.recognized.connect(speech_recognizer_recognized_cb)
+    speech_recognizer.recognized.connect(lambda evt: speech_recognizer_recognized_cb(evt, room))
     speech_recognizer.session_started.connect(speech_recognizer_session_started_cb)
     speech_recognizer.session_stopped.connect(speech_recognizer_session_stopped_cb)
     speech_recognizer.canceled.connect(speech_recognizer_recognition_canceled_cb)
     
+    recognizers[room] = speech_recognizer
+    audio_streams[room] = audio_input_stream
+
     return speech_recognizer, audio_input_stream
 
 def speech_recognizer_recognition_canceled_cb(evt: speechsdk.SessionEventArgs):
@@ -53,57 +53,68 @@ def speech_recognizer_recognition_canceled_cb(evt: speechsdk.SessionEventArgs):
 def speech_recognizer_session_stopped_cb(evt: speechsdk.SessionEventArgs):
     print('SessionStopped event')
 
-def speech_recognizer_recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs):
+def speech_recognizer_recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs, room):
     print('TRANSCRIBED:')
     if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
-       # detected_language_result = speechsdk.languageconfig.AutoDetectSourceLanguageResult(evt.result)
-        #detected_language = detected_language_result.language
         print(f'\tText={evt.result.text}')
-        #print(f'\tDetected Language={detected_language}')
-        #socketio.emit('transcription_result', {'text': evt.result.text})
+        socketio.emit('transcription_result', {'text': evt.result.text, 'speakerId': 'Unknown'}, room=room)
     elif evt.result.reason == speechsdk.ResultReason.NoMatch:
         print('\tNOMATCH: Speech could not be TRANSCRIBED: {}'.format(evt.result.no_match_details))
-
-def speech_recognizer_recognizing_cb(evt: speechsdk.SpeechRecognitionEventArgs):
-    print('RECOGNIZING:')
-    if evt.result.reason == speechsdk.ResultReason.RecognizingSpeech:
-        print(f'\tText={evt.result.text}')
-        socketio.emit('transcription_result', {'text': evt.result.text})
 
 def speech_recognizer_session_started_cb(evt: speechsdk.SessionEventArgs):
     print('SessionStarted event')
 
-transcribing_stop = False
-speech_recognizer, audio_input_stream = initialize_recognizer()
-
 @app.route('/start_transcription', methods=['POST'])
 def start_transcription():
-    global transcribing_stop, speech_recognizer, audio_input_stream
-    transcribing_stop = False
-    speech_recognizer.start_continuous_recognition_async()
-    return {"message": "Transcription started"}, 200
+    room = request.json.get("room")
+    if room:
+        speech_recognizer, audio_input_stream = initialize_recognizer(room)
+        speech_recognizer.start_continuous_recognition_async()
+        return {"message": "Transcription started"}, 200
+    else:
+        return {"error": "Room not specified"}, 400
 
 @app.route('/stop_transcription', methods=['POST'])
 def stop_transcription():
-    global transcribing_stop, speech_recognizer, audio_input_stream
-    transcribing_stop = True
-    speech_recognizer.stop_continuous_recognition_async()
-    # Reinitialize recognizer for the next session
-    speech_recognizer, audio_input_stream = initialize_recognizer()
-    return {"message": "Transcription stopped"}, 200
+    room = request.json.get("room")
+    if room:
+        if room in recognizers:
+            recognizers[room].stop_continuous_recognition_async()
+            del recognizers[room]
+            del audio_streams[room]
+        return {"message": "Transcription stopped"}, 200
+    else:
+        return {"error": "Room not specified"}, 400
 
 @socketio.on('audio_data')
 def handle_audio_data(audio_data):
-    global audio_input_stream
+    room = request.sid
     print("Received audio data")
-    if audio_data:
+    if room in audio_streams:
         try:
-            audio_input_stream.write(audio_data)
+            audio_streams[room].write(audio_data)
             print(f"Audio data length: {len(audio_data)}")
         except Exception as e:
             app.logger.error(f"Error handling audio data: {e}")
     else:
-        app.logger.error("Received empty audio data")
+        app.logger.error("Audio stream for the room not found")
+
+@socketio.on('connect')
+def handle_connect():
+    room = request.sid
+    join_room(room)
+    print(f'Client connected: {room}')
+    emit('join_room', {'room': room})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    room = request.sid
+    leave_room(room)
+    print(f'Client disconnected: {room}')
+    if room in recognizers:
+        recognizers[room].stop_continuous_recognition_async()
+        del recognizers[room]
+        del audio_streams[room]
 
 if __name__ == '__main__':
     print("Starting server")
