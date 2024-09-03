@@ -7,7 +7,7 @@ app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS.CORS(app)
 
-AZURE_SPEECH_KEY = 'e5404bd89ea14c388c2c17234f95e36a'
+AZURE_SPEECH_KEY = ''
 AZURE_SERVICE_REGION = 'southeastasia'
 
 # Initialize configurations
