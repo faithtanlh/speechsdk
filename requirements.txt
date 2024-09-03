@@ -2,6 +2,10 @@ Flask
 Flask-SocketIO
 Flask-CORS
 python-dotenv
+<<<<<<< HEAD
 azure-cognitiveservices-speech
 gunicorn
 gevent-websocket
+=======
+azure-cognitiveservices-speech
+>>>>>>> e455908a42b591ae4558a063c9f30459a6263e3d
