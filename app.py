@@ -1,5 +1,6 @@
-<<<<<<< HEAD
+import os
 from flask import Flask, request
+from dotenv import load_dotenv
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import azure.cognitiveservices.speech as speechsdk
 import flask_cors as CORS
@@ -7,8 +8,9 @@ import flask_cors as CORS
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 CORS.CORS(app)
+load_dotenv()
 
-AZURE_SPEECH_KEY = ''
+AZURE_SPEECH_KEY = os.getenv("SPEECHSDK_API_KEY")
 AZURE_SERVICE_REGION = 'southeastasia'
 
 # Initialize configurations
@@ -39,6 +41,7 @@ def initialize_recognizer(room):
     )
     
     speech_recognizer.recognized.connect(lambda evt: speech_recognizer_recognized_cb(evt, room))
+    speech_recognizer.recognizing.connect(speech_recognizer_partial_cb)
     speech_recognizer.session_started.connect(speech_recognizer_session_started_cb)
     speech_recognizer.session_stopped.connect(speech_recognizer_session_stopped_cb)
     speech_recognizer.canceled.connect(speech_recognizer_recognition_canceled_cb)
@@ -58,9 +61,13 @@ def speech_recognizer_recognized_cb(evt: speechsdk.SpeechRecognitionEventArgs, r
     print('TRANSCRIBED:')
     if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
         print(f'\tText={evt.result.text}')
-        socketio.emit('transcription_result', {'text': evt.result.text, 'speakerId': 'Unknown'}, room=room)
+        print('\tSpeaker ID={}'.format(evt.result.speaker_id))
+        socketio.emit('transcription_result', {'text': evt.result.text, 'speakerId': evt.result.speaker_id}, room=room)
     elif evt.result.reason == speechsdk.ResultReason.NoMatch:
         print('\tNOMATCH: Speech could not be TRANSCRIBED: {}'.format(evt.result.no_match_details))
+
+def speech_recognizer_partial_cb(evt):
+    print(f"Partial result: {evt.result.text}")
 
 def speech_recognizer_session_started_cb(evt: speechsdk.SessionEventArgs):
     print('SessionStarted event')
@@ -88,17 +95,19 @@ def stop_transcription():
         return {"error": "Room not specified"}, 400
 
 @socketio.on('audio_data')
-def handle_audio_data(audio_data):
-    room = request.sid
-    print("Received audio data")
+def handle_audio_data(data):
+    room = data["room"]
+    audio_data = data["audio_data"]
+
+    # print("Received audio data")
     if room in audio_streams:
         try:
             audio_streams[room].write(audio_data)
-            print(f"Audio data length: {len(audio_data)}")
+            # print(f"Audio data length: {len(audio_data)}")
         except Exception as e:
             app.logger.error(f"Error handling audio data: {e}")
     else:
-        app.logger.error("Audio stream for the room not found")
+        app.logger.error(f"Audio stream for the room not found: {room}")
 
 @socketio.on('connect')
 def handle_connect():
@@ -119,76 +128,4 @@ def handle_disconnect():
 
 if __name__ == '__main__':
     print("Starting server")
-    socketio.run(app, host="0.0.0.0", port=8000)
-=======
-import os
-from flask import Flask, render_template
-from flask_socketio import SocketIO, emit
-from flask_cors import CORS
-from dotenv import load_dotenv
-import azure.cognitiveservices.speech as speechsdk
-
-load_dotenv()
-
-app = Flask(__name__)
-app.config['SECRET_KEY'] = 'secret!'
-socketio = SocketIO(app, cors_allowed_origins="*")
-
-CORS(app, resources={r"/*": {"origins": "*"}})
-
-api_key = "e5404bd89ea14c388c2c17234f95e36a"
-region = "southeastasia"
-
-speech_config = speechsdk.SpeechConfig(subscription=api_key, region=region)
-auto_detect_source_language_config = speechsdk.AutoDetectSourceLanguageConfig(languages=["en-US", "hi-IN"])
-audio_config = speechsdk.AudioConfig(use_default_microphone=True)
-speech_recognizer = speechsdk.SpeechRecognizer(
-    speech_config=speech_config,
-    audio_config=audio_config,
-    auto_detect_source_language_config=auto_detect_source_language_config
-)
-
-recognizing = False
-
-def stop_recognition():
-    global recognizing
-    recognizing = False
-
-@socketio.on('connect')
-def handle_connect():
-    print('Client connected')
-
-@socketio.on('disconnect')
-def handle_disconnect():
-    print('Client disconnected')
-
-@socketio.on('start_transcription')
-def handle_start_transcription():
-    global recognizing
-    if recognizing:
-        return
-    recognizing = True
-    print("Transcription started")
-    while recognizing:
-        speech_recognition_result = speech_recognizer.recognize_once_async().get()
-        if speech_recognition_result.reason == speechsdk.ResultReason.RecognizedSpeech:
-            print(f"Recognized: {speech_recognition_result.text}")
-            emit('transcription_result', speech_recognition_result.text)
-        elif speech_recognition_result.reason == speechsdk.ResultReason.NoMatch:
-            emit('transcription_result', "No speech could be recognized")
-        elif speech_recognition_result.reason == speechsdk.ResultReason.Canceled:
-            cancellation_details = speech_recognition_result.cancellation_details
-            emit('transcription_result', f"Speech Recognition canceled: {cancellation_details.reason}")
-
-@socketio.on('stop_transcription')
-def handle_stop_transcription():
-    global recognizing
-    if recognizing:
-        print("Transcription stopped")
-        stop_recognition()
-        speech_recognizer.stop_continuous_recognition_async()
-        # Additional logic to stop transcription if needed
-
-if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=8000)
->>>>>>> e455908a42b591ae4558a063c9f30459a6263e3d
+    socketio.run(app, host="127.0.0.1", port=8000) # run locally
