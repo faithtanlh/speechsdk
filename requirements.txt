@@ -5,3 +5,4 @@ python-dotenv
 azure-cognitiveservices-speech
 gunicorn
 gevent-websocket
+openai
