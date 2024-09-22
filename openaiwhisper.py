@@ -2,13 +2,13 @@ import os
 from openai import AzureOpenAI
     
 client = AzureOpenAI(
-    api_key='9a7214af1f5a46eb8f4fb91f8745d4d5',
+    api_key= os.getenv('AZURE_OPENAI_API_KEY'),
     api_version="2024-02-01",
     azure_endpoint = 'https://shs-openai-01.openai.azure.com/'
 )
 
 deployment_id = 'shs-whisper' #This will correspond to the custom name you chose for your deployment when you deployed a model."
-audio_test_file = '/Users/lihuicham/Documents/GitHub/speechsdk/data/nsc/3010_short.wav'
+audio_test_file = '/Users/lihuicham/Documents/GitHub/speechsdk/data/nsc/3010_short.wav' # change this to ur path
 
 result = client.audio.transcriptions.create(
     file=open(audio_test_file, "rb"),            

@@ -1,3 +1,4 @@
+import os
 from flask import Flask, request, jsonify
 import requests
 import json
@@ -5,10 +6,8 @@ import json
 app = Flask(__name__)
 
 # Azure configuration
-AZURE_SUBSCRIPTION_KEY = 'e5404bd89ea14c388c2c17234f95e36a'
-AZURE_SERVICE_REGION = 'southeastasia'
-
-AZURE_SPEECH_API_URL = f"https://southeastasia.api.cognitive.microsoft.com/speechtotext/v3.2/transcriptions"
+AZURE_SUBSCRIPTION_KEY = os.getenv('SPEECHSDK_API_KEY')  
+AZURE_SPEECH_API_URL = "https://southeastasia.api.cognitive.microsoft.com/speechtotext/v3.2/transcriptions"
 
 
 @app.route('/create-transcription', methods=['POST'])
