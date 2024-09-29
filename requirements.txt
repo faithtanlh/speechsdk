@@ -3,6 +3,11 @@ Flask-SocketIO
 Flask-CORS
 python-dotenv
 azure-cognitiveservices-speech
+azure-storage-blob
 gunicorn
 gevent-websocket
 openai
+pandas
+jiwer
+praat-textgrids
+openpyxl
