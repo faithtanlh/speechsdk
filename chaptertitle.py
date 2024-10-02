@@ -31,7 +31,7 @@ def generate_chapter_title(text, api_key, api_endpoint):
 
     # Request to the Azure OpenAI API using chat completions
     completion = client.chat.completions.create(
-        model="gpt-35-turbo",  # Replace with your Azure GPT model deployment name, e.g., 'gpt-35-turbo'
+        model="gpt-4o-mini",  # Replace with your Azure GPT model deployment name, e.g., 'gpt-35-turbo'
         messages=messages,
         max_tokens=20,  # Limit tokens for shorter, concise titles
         temperature=0.7,  # Adjust to control creativity level
