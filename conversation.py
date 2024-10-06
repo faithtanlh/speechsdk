@@ -14,24 +14,29 @@ def conversation_transcriber_recognition_canceled_cb(evt: speechsdk.SessionEvent
 def conversation_transcriber_transcribed_cb(evt: speechsdk.SpeechRecognitionEventArgs):
     print('\nTRANSCRIBED:')
     if evt.result.reason == speechsdk.ResultReason.RecognizedSpeech:
-        print('\tText={}'.format(evt.result.text))
-        print('\tSpeaker ID={}\n'.format(evt.result.speaker_id))
+        print(f'\tSpeaker ID={evt.result.speaker_id}')
+        print(f'\tText={evt.result.text}')
     elif evt.result.reason == speechsdk.ResultReason.NoMatch:
-        print('\tNOMATCH: Speech could not be TRANSCRIBED: {}'.format(evt.result.no_match_details))
+        print(f'\tNOMATCH: Speech could not be TRANSCRIBED: {evt.result.no_match_details}')
 
-# Initialize a variable to hold previously recognized text for comparison
+# Initialize variables to hold previously recognized text and speaker ID for comparison
 recognized_text = ""
+current_speaker_id = None
 
 def conversation_transcriber_transcribing_cb(evt: speechsdk.SpeechRecognitionEventArgs):
-    global recognized_text
+    global recognized_text, current_speaker_id
     new_text = evt.result.text.strip()
 
-    # If there's new text, update and print progressively
-    if new_text != recognized_text:
-        recognized_text = new_text
-        # Print progressively on the same line
-        print(f'\r{recognized_text}', end='', flush=True)
+    # Get speaker ID for current segment
+    speaker_id = evt.result.speaker_id if hasattr(evt.result, 'speaker_id') else "Unknown"
 
+    # If the speaker changes or new text is recognized, update and print progressively
+    if new_text != recognized_text or speaker_id != current_speaker_id:
+        recognized_text = new_text
+        current_speaker_id = speaker_id
+
+        # Clear the current line and print progressively with speaker ID in the same line
+        print(f'\rTRANSCRIBING : SPEAKER ID = {current_speaker_id} | TEXT = {recognized_text}', end='', flush=True)
 
 def recognize():
     speech_config = speechsdk.SpeechConfig(subscription=os.environ.get('AZURE_SPEECH_KEY'), region=os.environ.get('AZURE_SPEECH_REGION'))
@@ -67,12 +72,11 @@ def recognize():
 
     # Waits for completion.
     while not transcribing_stop:
-        time.sleep(.3)   # how fast transcribed is outputted (meaning how fast each audio segment is processed)
+        time.sleep(.3)   # how fast transcribed text is outputted (how fast each audio segment is processed)
 
     conversation_transcriber.stop_transcribing_async()
 
 # Main
-
 try:
     recognize()
 except KeyboardInterrupt:
