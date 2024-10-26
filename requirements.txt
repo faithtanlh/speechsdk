@@ -8,6 +8,7 @@ gunicorn
 gevent-websocket
 openai
 pandas
-jiwer
 praat-textgrids
 openpyxl
+jiwer
+azure-ai-textanalytics
