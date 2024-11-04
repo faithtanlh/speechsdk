@@ -2,10 +2,13 @@ from flask import Flask, request
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import azure.cognitiveservices.speech as speechsdk
 from openai import AzureOpenAI
+from azure.ai.textanalytics import TextAnalyticsClient
+from azure.core.credentials import AzureKeyCredential
 import flask_cors as CORS
 import os
 import time
 import threading
+import pandas as pd
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -18,11 +21,21 @@ AZURE_SERVICE_REGION = os.environ.get('AZURE_SPEECH_REGION')
 AZURE_OPENAI_KEY = os.getenv("AZURE_OPENAI_KEY")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")  # Replace with your resource's URL
 
+# Set up Azure Text Analytics key and endpoint
+TEXT_ANALYTICS_KEY = os.getenv('TEXT_ANALYTICS_KEY')
+TEXT_ANALYTICS_ENDPOINT = os.getenv('TEXT_ANALYTICS_ENDPOINT')
+
 # Set up Azure OpenAI client
 client = AzureOpenAI(
     api_version="2024-02-01", # Make sure to use the correct API version
     api_key=AZURE_OPENAI_KEY,
     azure_endpoint=AZURE_OPENAI_ENDPOINT,
+)
+
+# Set up Azure Text Analytics client
+text_analytics_client = TextAnalyticsClient(
+    endpoint=TEXT_ANALYTICS_ENDPOINT,
+    credential=AzureKeyCredential(TEXT_ANALYTICS_KEY),
 )
 
 # Initialize configurations
@@ -143,11 +156,57 @@ def generate_chapter_titles(text):
     print("Titles:", titles)
     return titles
 
+# Function to achieve HER for checkbox ticking
+flags = { 'SymptomOrSign': False, 'Diagnosis': False, 'BodyStructure': False, 'Time': False, 'TreatmentName': False }
+triggered_entities = []
+
+def generate_checkbox_flags(text):
+    words_to_remove = {'ok', 'yeah', 'yea', 'ya', 'hello', 'hi', 'bye', 'oh'}
+    print(f"Processing chunk:\n{text}")
+
+    # hypothesis_text_list = [sent.strip() for sent in text.lower().split('. ') if sent.strip()]
+    hypothesis_text_list = [sent.strip() for sent in text.lower().split('. ') 
+                            if sent.strip().lower() not in words_to_remove]
+    long_sentences = " ".join([sent for sent in hypothesis_text_list if len(sent.split()) > 10])
+
+    poller = text_analytics_client.begin_analyze_healthcare_entities([long_sentences])
+    result = poller.result()
+    docs = [doc for doc in result if not doc.is_error]
+
+    # Extract and create DataFrame in one step
+    entities_data = [(entity.category, entity.confidence_score, entity.text) 
+                        for doc in docs for entity in doc.entities if entity.category]
+    her_df = pd.DataFrame(entities_data, columns=['category', 'confidence_score', 'text'])
+
+    # Set flags based on entity categories and confidence scores and store triggering entities
+    for category in flags.keys():
+        if not flags[category]:  # Only check if flag is not already set
+            matches = her_df.loc[(her_df['category'] == category) & 
+                                    (her_df['confidence_score'] >= 0.89)]
+            if not matches.empty:
+                flags[category] = True
+                # Save triggering entities to tracking list
+                triggered_entities.extend(matches[['category', 'confidence_score', 'text']].to_dict('records'))
+    
+    print("Flags status for this chunk:\n", flags)
+    print('='*50)
+    # Save the triggered entities to a CSV after processing completes
+    triggered_df = pd.DataFrame(triggered_entities)
+    # triggered_df.to_csv("files/triggered_entities.csv", index=False)
+
+    return flags
+
+
 # Global dictionary to store transcriptions for each room
 room_transcriptions = {}
+stop_flags = {}
 
 # Function to periodically process transcriptions and generate chapter titles
 def process_transcriptions_periodically(interval, transcriptions, room, processed_transcriptions=""):
+    if stop_flags.get(room, False):
+        print(f"Stopping processing for room {room}")
+        return
+    
     if transcriptions:
         # Combine all collected transcriptions
         new_transcriptions = ' '.join([entry['text'] for entry in transcriptions])
@@ -157,13 +216,20 @@ def process_transcriptions_periodically(interval, transcriptions, room, processe
         
         print(f"Collected transcriptions for room {room}: {combined_transcriptions}")
 
-        # Generate chapter titles based on the new additions
+        # Generate chapter titles based on the combined transcriptions
         chapter_titles = generate_chapter_titles(combined_transcriptions)
         print(f"Generated chapter titles for room {room}: {chapter_titles}")
 
         # Emit the chapter titles to the frontend
         socketio.emit('chapter_titles', {'titles': chapter_titles}, room=room)
 
+        # Generate checkbox flags based on the new transcriptions
+        checkbox_flags = generate_checkbox_flags(new_transcriptions)
+        print(f"Generated checkbox flags for room {room}: {checkbox_flags}")
+
+        # Emit the checkbox flags to the frontend
+        socketio.emit('checkbox_flags', {'flags': checkbox_flags}, room=room)
+    
         # Update processed transcriptions with the new additions
         processed_transcriptions += ' ' + new_transcriptions
 
@@ -178,6 +244,9 @@ def start_transcription():
         # Initialize transcriptions list for this room if it doesn't exist
         if room not in room_transcriptions:
             room_transcriptions[room] = []
+        
+        if room not in stop_flags:
+            stop_flags[room] = False
 
         conversation_transcriber, audio_input_stream = initialize_recognizer(room)
         conversation_transcriber.start_transcribing_async()
@@ -196,6 +265,12 @@ def stop_transcription():
         recognizers[room].stop_transcribing_async()
         del recognizers[room]
         del audio_streams[room]
+
+        stop_flags[room] = True
+
+        # Clear the stop flag list for this room
+        stop_flags.pop(room, None)
+
         return {"message": "Transcription stopped"}, 200
     return {"error": "Room not specified"}, 400
 

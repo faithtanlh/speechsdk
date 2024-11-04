@@ -28,6 +28,14 @@ const App: React.FC = () => {
   const [transcriptions, setTranscriptions] = useState<TranscriptionResult[]>([]);
   const [currentTranscription, setCurrentTranscription] = useState<string>(""); // Current sentence being transcribed
   const [chapterTitles, setChapterTitles] = useState<string[]>([]); // State for chapter titles
+  const [checkboxFlags, setCheckboxFlags] = useState({
+    SymptomOrSign: false,
+    Diagnosis: false,
+    BodyStructure: false,
+    Time: false,
+    TreatmentName: false,
+  });
+  
   const [isListening, setIsListening] = useState(false);
   const [room, setRoom] = useState<string | null>(null);
   const toast = useToast();
@@ -69,6 +77,12 @@ const App: React.FC = () => {
     newSocket.on("chapter_titles", (data: { titles: string }) => {
       setChapterTitles(data.titles.split('\n')); // Split the titles into an array
     });
+
+    // Handle checkbox flags from the backend
+    newSocket.on("checkbox_flags", (data) => {
+      setCheckboxFlags(data.flags); // Update the checkbox flags state with incoming data
+    });
+    
   
     // Join the room when connected
     newSocket.on("join_room", (data: { room: string }) => {
@@ -188,11 +202,37 @@ const App: React.FC = () => {
       </VStack>
     );
   };
+
+  const renderCheckboxFlags = () => {
+
+    // Map of display texts for each checkbox key
+    const checkboxTextMap: { [key: string]: string } = {
+      SymptomOrSign: "[SymptomOrSign] Did you obtain information about the symptoms the patient is facing?",
+      Diagnosis: "[Diagnosis] Have you diagnosed the patient's condition?",
+      BodyStructure: "[BodyStructure] Did you discuss which part of the body the ailment is occurring at?",
+      Time: "[Time] Did you obtain information about the duration of the patient's condition and/or the onset of the patient's condition?",
+      TreatmentName: "[TreatmentName] Have you offered steps or advice on how the patient should proceed with the treatment?"
+    };
+
+    return (
+      <VStack align="flex-start" spacing={5} p={4} boxShadow="md" bg="gray.50" borderRadius="md" w="100%">
+        <Text fontWeight="bold">Entity Flags</Text>
+        {Object.entries(checkboxFlags).map(([key, value]) => (
+          <HStack key={key} spacing={3}>
+            <input type="checkbox" checked={value} readOnly />
+            <Text fontSize="sm">{checkboxTextMap[key] || key}</Text> {/* Display custom text or fallback to key */}
+          </HStack>
+        ))}
+      </VStack>
+    );
+  };
   
 
   return (
     <ChakraProvider>
-      <Flex direction="row" p={4} w="100%" maxW="1200px">
+      <Flex direction="row" p={4} w="100%" maxW="1600px">
+        
+        {/* Transcription Section */}
         <Box flex="1" p={4}>
           <VStack spacing={4}>
             <HStack spacing={4}>
@@ -232,9 +272,14 @@ const App: React.FC = () => {
           </VStack>
         </Box>
 
-        {/* Right-hand side chapter titles */}
-        <Box flex="0.4" p={4}>
+        {/* Chapter Titles Section */}
+        <Box flex="0.5" p={4}>
           {renderChapterTitles()}
+        </Box>
+
+        {/* Checkbox Flags Section */}
+        <Box flex="0.4" p={4}>
+          {renderCheckboxFlags()}
         </Box>
       </Flex>
     </ChakraProvider>
