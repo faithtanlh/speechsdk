@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [transcriptions, setTranscriptions] = useState<TranscriptionResult[]>([]);
   const [currentTranscription, setCurrentTranscription] = useState<string>(""); // Current sentence being transcribed
   const [chapterTitles, setChapterTitles] = useState<string[]>([]); // State for chapter titles
+  const [soapSummary, setSoapSummary] = useState<string[]>([]); // State for SOAP Summary
   const [checkboxFlags, setCheckboxFlags] = useState({
     SymptomOrSign: false,
     Diagnosis: false,
@@ -76,6 +77,11 @@ const App: React.FC = () => {
     // Handle receiving chapter titles from the backend
     newSocket.on("chapter_titles", (data: { titles: string }) => {
       setChapterTitles(data.titles.split('\n')); // Split the titles into an array
+    });
+
+    // Handle SOAP summary from the backend
+    newSocket.on("soap_summary", (data: { summary: string }) => {
+      setSoapSummary(data.summary.split('\n')); // Split SOAP into an array
     });
 
     // Handle checkbox flags from the backend
@@ -189,12 +195,26 @@ const App: React.FC = () => {
     100% { transform: scaleY(1); }
   `;
 
-  // Layout for the right-hand side chapter titles
+  // Layout for the display of chapter titles
   const renderChapterTitles = () => {
     return (
       <VStack align="flex-start" spacing={2} p={4} boxShadow="md" bg="gray.50" borderRadius="md" w="100%">
         <Text fontWeight="bold">Chapter Titles</Text>
         {chapterTitles.map((title, index) => (
+          <Text key={index} fontSize="sm">
+            {title}
+          </Text>
+        ))}
+      </VStack>
+    );
+  };
+
+  // Layout for the display of SOAP summaries
+  const renderSoapSummaries = () => {
+    return (
+      <VStack align="flex-start" spacing={2} p={4} boxShadow="md" bg="gray.50" borderRadius="md" w="100%">
+        <Text fontWeight="bold">SOAP Summary</Text>
+        {soapSummary.map((title, index) => (
           <Text key={index} fontSize="sm">
             {title}
           </Text>
@@ -230,10 +250,10 @@ const App: React.FC = () => {
 
   return (
     <ChakraProvider>
-      <Flex direction="row" p={4} w="100%" maxW="1600px">
+      <Flex direction="row" p={4} w="130%" maxW="1800px">
         
         {/* Transcription Section */}
-        <Box flex="1" p={4}>
+        <Box flex="1.5" p={4}>
           <VStack spacing={4}>
             <HStack spacing={4}>
               <Button colorScheme="blue" onClick={startRecording} disabled={isListening}>
@@ -251,7 +271,7 @@ const App: React.FC = () => {
                 </Text>
               </Flex>
             )}
-            <Box w="100%" maxW="800px" pt={4} boxShadow="md" bg="gray.200">
+            <Box w="100%" maxW="900px" pt={4} boxShadow="md" bg="gray.200">
               <VStack spacing={2} align="stretch">
                 {transcriptions.map((item, index) => (
                   <Flex key={index} direction="column" alignItems="flex-start" margin={2}>
@@ -273,12 +293,17 @@ const App: React.FC = () => {
         </Box>
 
         {/* Chapter Titles Section */}
-        <Box flex="0.5" p={4}>
+        <Box flex="0.6" p={4}>
           {renderChapterTitles()}
         </Box>
 
+        {/* SOAP Summary Section */}
+        <Box flex="0.6" p={4}>
+          {renderSoapSummaries()}
+        </Box>
+
         {/* Checkbox Flags Section */}
-        <Box flex="0.4" p={4}>
+        <Box flex="0.5" p={4}>
           {renderCheckboxFlags()}
         </Box>
       </Flex>
