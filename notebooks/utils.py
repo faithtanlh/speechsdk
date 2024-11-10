@@ -46,6 +46,18 @@ def remove_intents(text):
     cleaned_text = re.sub(r'\s+', ' ', cleaned_text).strip()
     return cleaned_text
 
+def format_transcript(transcript):
+    # Remove speaker labels (e.g., "D:" or "P:")
+    formatted_text = re.sub(r'^[DP]:\s*', '', transcript, flags=re.MULTILINE)
+    
+    # Replace newlines and extra spaces with a single space to create continuous text
+    formatted_text = re.sub(r'\s*\n\s*', ' ', formatted_text)
+    
+    # Remove any extra spaces between words
+    formatted_text = re.sub(r'\s+', ' ', formatted_text).strip()
+    
+    return formatted_text
+
 def transform(reference_text, hypothesis_text):
     # Normalize the text by transforming it to lower case and removing punctuation
     transformation = jiwer.Compose([

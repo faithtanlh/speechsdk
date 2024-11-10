@@ -12,3 +12,4 @@ praat-textgrids
 openpyxl
 jiwer
 azure-ai-textanalytics
+chardet==5.2.0
