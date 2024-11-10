@@ -156,6 +156,67 @@ def generate_chapter_titles(text):
     print("Titles:", titles)
     return titles
 
+# Function to generate SOAP summary using Azure OpenAI
+def generate_soap_summary(text):
+    # The prompt asks for a SOAP summary based on the provided transcript
+    messages = [
+        {
+            "role": "system",
+            "content": "You are an assistant that generates SOAP (Subjective, Objective, Assessment, Plan) summaries for doctor-patient consultations. Your task is to analyze the text and create a structured summary in the SOAP format."
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Generate a concise SOAP summary for the following doctor-patient consultation:\n\n{text}."
+                "Organize the summary according to the SOAP format, with each section as follows:\n\n"
+                "1. Subjective:\n"
+                "Capture the patient’s self-reported symptoms, history, and any other relevant subjective details shared by the patient.\n"
+                
+                "2. Objective:\n"
+                "Include the clinician’s observations, examination findings, and any measurable or observable data.\n"
+                
+                "3. Assessment:\n"
+                "Summarize the clinician’s diagnosis or assessment of the patient’s condition based on the consultation.\n"
+                
+                "4. Plan:\n"
+                "Outline the treatment plan, including any prescribed medications, recommended follow-up actions, or further tests.\n\n"
+                
+                "If any section lacks sufficient information, please state 'Insufficient information provided' for that section.\n\n"
+
+                "Here is an example of a SOAP summary:\n\n"
+                
+                "1. Subjective:\n"
+                "Patient reports persistent headaches for the past two weeks, with throbbing pain around the temples. Pain is moderate but worsening during stress, with no other symptoms such as nausea.\n\n"
+                
+                "2. Objective:\n"
+                "Vital signs normal. Neurological exam reveals no abnormalities; reflexes and coordination are intact. No signs of infection in ears, throat, or sinuses.\n\n"
+                
+                "3. Assessment:\n"
+                "Likely diagnosis is tension headaches, potentially stress-induced. Family history suggests possible migraines but currently less likely.\n\n"
+                
+                "4. Plan:\n"
+                "Recommend tracking headache patterns and using NSAIDs as needed. Referral to neurologist for further evaluation if migraines persist. Follow-up in two weeks.\n\n"
+                
+                "Please return the SOAP summary with these four sections clearly labeled."
+            )
+        }
+    ]
+
+    # Request to the Azure OpenAI API using chat completions
+    completion = client.chat.completions.create(
+        model="gpt-4o-mini",  # Replace with your Azure GPT model deployment name
+        messages=messages,
+        # max_tokens=200,  # Limit tokens for a concise response
+        temperature=0.7,  # Adjust to control creativity level
+        n=1,  # Number of responses
+    )
+
+    # Extract and return the generated SOAP summary
+    soap_summary = completion.choices[0].message.content.strip()
+    print("SOAP Summary:", soap_summary)
+    return soap_summary
+
+
 # Function to achieve HER for checkbox ticking
 flags = { 'SymptomOrSign': False, 'Diagnosis': False, 'BodyStructure': False, 'Time': False, 'TreatmentName': False }
 triggered_entities = []
@@ -222,6 +283,13 @@ def process_transcriptions_periodically(interval, transcriptions, room, processe
 
         # Emit the chapter titles to the frontend
         socketio.emit('chapter_titles', {'titles': chapter_titles}, room=room)
+
+        # Generate SOAP summary based on the combined transcriptions
+        soap_summary = generate_soap_summary(combined_transcriptions)
+        print(f"Generated soap summary for room {room}: {soap_summary}")
+
+        # Emit the SOAP summary to the frontend
+        socketio.emit('soap_summary', {'summary': soap_summary}, room=room)
 
         # Generate checkbox flags based on the new transcriptions
         checkbox_flags = generate_checkbox_flags(new_transcriptions)
